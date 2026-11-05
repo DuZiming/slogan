@@ -32,4 +32,28 @@ class LibraryGrouperTest {
         val s = e.single() as LibraryEntry.Series
         assertEquals(listOf(1, 2), s.seasons.getValue(1).map { it.episode })
     }
+
+    private fun mfRel(name: String, relativePath: String) =
+        MediaFile(sourceId = "local", path = "/media/$relativePath", name = name, sizeBytes = 1L, lastModifiedEpochMs = 1L, relativePath = relativePath)
+
+    @Test
+    fun `folder name rescues fallback episodes`() {
+        val e = LibraryGrouper.group(
+            listOf(
+                mfRel("S01E01.mkv", "绝命毒师/Season 1/S01E01.mkv"),
+                mfRel("S01E02.mkv", "绝命毒师/Season 1/S01E02.mkv"),
+                mfRel("S02E01.mkv", "绝命毒师/Season 2/S02E01.mkv"),
+            ),
+        )
+        val s = e.single() as LibraryEntry.Series
+        assertEquals("绝命毒师", s.title)
+        assertEquals(setOf(1, 2), s.seasons.keys)
+    }
+
+    @Test
+    fun `plain fallback file keeps own series`() {
+        val e = LibraryGrouper.group(listOf(mf("S01E01.mkv")))
+        val s = e.single() as LibraryEntry.Series
+        assertEquals("S01E01", s.title)
+    }
 }

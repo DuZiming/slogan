@@ -27,8 +27,8 @@ object LibraryGrouper {
                 movies += LibraryEntry.Movie(file, parsed)
                 continue
             }
-            val entry = series.getOrPut(parsed.title.lowercase().trim()) {
-                parsed.title to mutableMapOf()
+            val entry = series.getOrPut(seriesKey(parsed, file)) {
+                displayTitle(parsed, file) to mutableMapOf()
             }
             val seasons = entry.second
             for (ep in episodes) {
@@ -48,6 +48,29 @@ object LibraryGrouper {
         }
         return movies + seriesEntries
     }
+
+    private val SEASON_DIR_PATTERN =
+        Regex("""(?i)^(season[ _.\-]?\d{1,2}|s\d{1,2}|第\d{1,2}季|\d{1,2})$""")
+
+    /**
+     * Review I5：文件名解析失败（usedFallback）时，用相对路径里的真实文件夹名当剧集标题——
+     * "绝命毒师/Season 1/S01E01.mkv" 不再裂成 N 个独集条目；季目录（Season 1/S01/第2季…）不算标题。
+     */
+    internal fun rescueSeriesTitle(file: MediaFile, parsed: ParsedFileName): String? {
+        if (!parsed.usedFallback) return null
+        val rel = file.relativePath ?: return null
+        for (dir in rel.split('/').dropLast(1).asReversed()) {
+            if (SEASON_DIR_PATTERN.matches(dir)) continue
+            if (dir.any { it.isLetter() }) return dir
+        }
+        return null
+    }
+
+    private fun displayTitle(parsed: ParsedFileName, file: MediaFile): String =
+        rescueSeriesTitle(file, parsed) ?: parsed.title
+
+    private fun seriesKey(parsed: ParsedFileName, file: MediaFile): String =
+        displayTitle(parsed, file).lowercase().trim()
 
     /**
      * 重载：BDMV 原盘文件夹（bdmvDirs 的 name 形如 "让子弹飞.2010/BDMV"）识别为
