@@ -1,0 +1,16 @@
+# Brainstorming session files
+.superpowers/
+
+# Build artifacts
+build/
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
