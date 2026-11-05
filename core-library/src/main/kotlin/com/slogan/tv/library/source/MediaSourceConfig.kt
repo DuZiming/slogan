@@ -5,6 +5,7 @@ enum class SourceType { LOCAL, SMB }
 
 /**
  * 媒体源配置（spec §5.4 设置页：媒体源管理）。
+ * shareRoot 双语义：LOCAL = 文件系统根路径；SMB = 共享内起始路径（首段为共享名，如 "media" 或 "media/movies"）。
  * 密码不入本模型——单独经 CredentialCipher 存取（见 Credentials.kt）。
  */
 data class MediaSourceConfig(
@@ -31,7 +32,7 @@ data class MediaSourceConfig(
             }
             SourceType.LOCAL -> {
                 if (host != null) add("本地源不应填写主机地址 host")
-                if (shareRoot != null) add("本地源不应填写共享目录 shareRoot")
+                if (shareRoot.isNullOrBlank()) add("本地源必须填写根路径 shareRoot")
             }
         }
     }

@@ -25,14 +25,20 @@ class MediaSourceConfigTest {
     }
 
     @Test
-    fun `local config must not carry smb fields`() {
-        val c = MediaSourceConfig(id = "l1", name = "U盘", type = SourceType.LOCAL, host = "192.168.1.10")
+    fun `local config must not carry smb host`() {
+        val c = MediaSourceConfig(id = "l1", name = "U盘", type = SourceType.LOCAL, host = "192.168.1.10", shareRoot = "D:/media")
         assertTrue(c.validate().any { it.contains("host") })
     }
 
     @Test
-    fun `plain local config is valid`() {
+    fun `local config requires root path`() {
         val c = MediaSourceConfig(id = "l1", name = "U盘", type = SourceType.LOCAL)
+        assertTrue(c.validate().any { it.contains("shareRoot") || it.contains("路径") })
+    }
+
+    @Test
+    fun `local config with root path is valid`() {
+        val c = MediaSourceConfig(id = "l1", name = "U盘", type = SourceType.LOCAL, shareRoot = "D:/media")
         assertEquals(emptyList(), c.validate())
     }
 }

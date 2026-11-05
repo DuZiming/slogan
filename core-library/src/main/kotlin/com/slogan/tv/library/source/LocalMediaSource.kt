@@ -15,7 +15,7 @@ import kotlin.coroutines.coroutineContext
 class LocalMediaSource(
     override val id: String,
     override val name: String,
-    private val root: File,
+    val root: File,
 ) : MediaSource {
 
     override suspend fun scan(callback: (ScanUpdate) -> Unit): ScanResult =

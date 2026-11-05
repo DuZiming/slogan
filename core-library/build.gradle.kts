@@ -8,6 +8,7 @@ kotlin {
 
 dependencies {
     implementation(libs.coroutines.core)
+    implementation(libs.smbj)
     testImplementation(kotlin("test"))
     testImplementation(libs.junit)
 }
