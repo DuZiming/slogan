@@ -15,14 +15,18 @@ class SourceFactory(
     private val smbClientFactory: suspend (MediaSourceConfig, String?) -> SmbFileClient =
         { config, password -> SmbjClient(config, password) },
 ) {
-    fun create(config: MediaSourceConfig): MediaSource =
-        when (config.type) {
+    fun create(config: MediaSourceConfig): MediaSource {
+        val errors = config.validate()
+        require(errors.isEmpty()) { "媒体源配置无效：${errors.joinToString("；")}" }
+        val root = config.normalizedShareRoot!!
+        return when (config.type) {
             SourceType.LOCAL ->
-                LocalMediaSource(config.id, config.name, File(config.shareRoot!!))
+                LocalMediaSource(config.id, config.name, File(root))
             SourceType.SMB ->
-                SmbMediaSource(config.id, config.name, config.shareRoot!!) {
+                SmbMediaSource(config.id, config.name, root) {
                     val password = passwordStore(config.id)?.let { credentialCipher.decrypt(it) }
                     smbClientFactory(config, password)
                 }
         }
+    }
 }

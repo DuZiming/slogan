@@ -28,29 +28,43 @@ class SmbMediaSource(
             val bdmvDirs = mutableListOf<MediaFile>()
             var skipped = 0
             var scanned = 0
+            var fatalError: String? = null
 
             val client = try {
                 clientFactory()
             } catch (e: SmbCommunicationException) {
-                callback(ScanUpdate.ErrorHint(shareRoot, describe(e)))
-                return@withContext ScanResult(files, bdmvDirs, skipped)
+                val msg = describe(e)
+                callback(ScanUpdate.ErrorHint(shareRoot, msg))
+                return@withContext ScanResult(files, bdmvDirs, skipped, fatalError = msg)
+            } catch (e: Exception) {
+                val msg = e.message ?: e.javaClass.simpleName
+                callback(ScanUpdate.ErrorHint(shareRoot, msg))
+                return@withContext ScanResult(files, bdmvDirs, skipped, fatalError = msg)
             }
 
             try {
                 val pending = ArrayDeque<String>()
                 pending.addLast(shareRoot)
-                while (pending.isNotEmpty()) {
+                while (pending.isNotEmpty() && fatalError == null) {
                     coroutineContext.ensureActive()
                     val dir = pending.removeLast()
                     val entries = try {
                         client.list(dir)
                     } catch (e: SmbCommunicationException) {
-                        callback(ScanUpdate.ErrorHint(dir, describe(e)))
+                        val msg = describe(e)
+                        callback(ScanUpdate.ErrorHint(dir, msg))
+                        if (dir == shareRoot) fatalError = msg
                         continue // 该子树不可达，跳过（栈空则自然结束）
+                    } catch (e: Exception) {
+                        // 兜底：任何意外异常（评审 I3）→ 提示并跳过，绝不冲出 scan
+                        val msg = e.message ?: e.javaClass.simpleName
+                        callback(ScanUpdate.ErrorHint(dir, msg))
+                        if (dir == shareRoot) fatalError = msg
+                        continue
                     }
                     for (entry in entries) {
-                        scanned++
                         val childPath = if (dir.isEmpty()) entry.name else "$dir/${entry.name}"
+                        if (!entry.isDirectory) scanned++ // 与 Local 扫描器口径一致：只计文件
                         when {
                             entry.isDirectory && entry.name.equals("BDMV", ignoreCase = true) -> {
                                 val parentName = dir.substringAfterLast('/')
@@ -88,7 +102,7 @@ class SmbMediaSource(
             }
 
             callback(ScanUpdate.Progress(scanned, files.size))
-            ScanResult(files = files, bdmvDirs = bdmvDirs, skippedCount = skipped)
+            ScanResult(files = files, bdmvDirs = bdmvDirs, skippedCount = skipped, fatalError = fatalError)
         }
 
     /** 错误分类 → 用户可读文案（spec：SMB1 明确不支持、错误不静默）。 */

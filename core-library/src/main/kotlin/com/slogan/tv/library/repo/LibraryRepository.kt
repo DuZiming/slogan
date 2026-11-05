@@ -43,8 +43,11 @@ class LibraryRepository(
 
         store?.let { s ->
             results.forEach { (source, r) ->
-                if (r != null) s.saveScanResult(source.id, r.files, r.bdmvDirs)
-                else s.saveScanResult(source.id, emptyList(), emptyList()) // 失败源清旧数据，防止"幽灵文件"
+                // 失败（异常或致命错误）保留 last-good（评审 I2：扫描失败≠文件删除）；
+                // 成功结果（含合法的空结果）按源全量替换
+                if (r != null && r.fatalError == null) {
+                    s.saveScanResult(source.id, r.files, r.bdmvDirs)
+                }
             }
         }
 

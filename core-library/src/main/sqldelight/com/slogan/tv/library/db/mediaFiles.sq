@@ -21,3 +21,7 @@ SELECT * FROM media_files WHERE is_bdmv = 0;
 
 selectAllBdmv:
 SELECT * FROM media_files WHERE is_bdmv = 1;
+
+-- 评审 I4：源被移除后级联清行，防幽灵文件
+deleteOrphanFiles:
+DELETE FROM media_files WHERE source_id NOT IN (SELECT id FROM sources);

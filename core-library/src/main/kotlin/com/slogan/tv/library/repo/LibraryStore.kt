@@ -33,6 +33,9 @@ class InMemoryLibraryStore : LibraryStore {
 
     override suspend fun saveSources(configs: List<MediaSourceConfig>) {
         sources = configs
+        // 整体替换语义：移除源的媒体行级联清除（与 SqlDelight 实现一致）
+        val ids = configs.map { it.id }.toSet()
+        filesBySource.keys.retainAll(ids)
     }
 
     override suspend fun loadSources(): List<MediaSourceConfig> = sources
@@ -52,12 +55,12 @@ class InMemoryLibraryStore : LibraryStore {
     override suspend fun lastSnapshotTime(): Long? = snapshotTime
 }
 
-/** SQLDelight 实现：真 SQLite 持久化。 */
+/** SQLDelight 实现：真 SQLite 持久化。JDBC 为阻塞 IO，统一派发到 Dispatchers.IO（评审 I5）。 */
 class SqlDelightLibraryStore(
     private val db: com.slogan.tv.library.db.LibraryDatabase,
 ) : LibraryStore {
 
-    override suspend fun saveSources(configs: List<MediaSourceConfig>) {
+    override suspend fun saveSources(configs: List<MediaSourceConfig>) = withContextIO {
         db.sourcesQueries.transaction {
             configs.forEach { c ->
                 db.sourcesQueries.insertSource(
@@ -71,10 +74,13 @@ class SqlDelightLibraryStore(
                     domain = c.domain,
                 )
             }
+            // 整体替换语义（评审 I4）：移除不再出现的源，并级联清其媒体行
+            db.sourcesQueries.deleteSourcesNotIn(configs.map { it.id })
+            db.mediaFilesQueries.deleteOrphanFiles()
         }
     }
 
-    override suspend fun loadSources(): List<MediaSourceConfig> =
+    override suspend fun loadSources(): List<MediaSourceConfig> = withContextIO {
         db.sourcesQueries.selectAllSources().executeAsList().map { row ->
             MediaSourceConfig(
                 id = row.id,
@@ -87,14 +93,16 @@ class SqlDelightLibraryStore(
                 domain = row.domain,
             )
         }
-
-    override suspend fun saveScanResult(sourceId: String, files: List<MediaFile>, bdmvDirs: List<MediaFile>) {
-        db.mediaFilesQueries.transaction {
-            db.mediaFilesQueries.deleteBySource(sourceId)
-            files.forEach { f -> insert(sourceId, f, isBdmv = false) }
-            bdmvDirs.forEach { f -> insert(sourceId, f, isBdmv = true) }
-        }
     }
+
+    override suspend fun saveScanResult(sourceId: String, files: List<MediaFile>, bdmvDirs: List<MediaFile>) =
+        withContextIO {
+            db.mediaFilesQueries.transaction {
+                db.mediaFilesQueries.deleteBySource(sourceId)
+                files.forEach { f -> insert(sourceId, f, isBdmv = false) }
+                bdmvDirs.forEach { f -> insert(sourceId, f, isBdmv = true) }
+            }
+        }
 
     private fun insert(sourceId: String, f: MediaFile, isBdmv: Boolean) {
         db.mediaFilesQueries.insertFile(
@@ -108,11 +116,13 @@ class SqlDelightLibraryStore(
         )
     }
 
-    override suspend fun loadAllFiles(): List<MediaFile> =
+    override suspend fun loadAllFiles(): List<MediaFile> = withContextIO {
         db.mediaFilesQueries.selectAllFiles().executeAsList().map { it.toMediaFile() }
+    }
 
-    override suspend fun loadAllBdmvDirs(): List<MediaFile> =
+    override suspend fun loadAllBdmvDirs(): List<MediaFile> = withContextIO {
         db.mediaFilesQueries.selectAllBdmv().executeAsList().map { it.toMediaFile() }
+    }
 
     private fun com.slogan.tv.library.db.Media_files.toMediaFile() = MediaFile(
         sourceId = source_id,
@@ -123,10 +133,14 @@ class SqlDelightLibraryStore(
         relativePath = relative_path,
     )
 
-    override suspend fun recordSnapshotTime(epochMs: Long) {
+    override suspend fun recordSnapshotTime(epochMs: Long) = withContextIO {
         db.snapshotQueries.insertSnapshot(epochMs)
     }
 
-    override suspend fun lastSnapshotTime(): Long? =
+    override suspend fun lastSnapshotTime(): Long? = withContextIO {
         db.snapshotQueries.lastSnapshotTime().executeAsOneOrNull()
+    }
+
+    private suspend fun <T> withContextIO(block: () -> T): T =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { block() }
 }

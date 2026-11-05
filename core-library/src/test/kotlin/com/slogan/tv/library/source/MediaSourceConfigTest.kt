@@ -41,4 +41,22 @@ class MediaSourceConfigTest {
         val c = MediaSourceConfig(id = "l1", name = "U盘", type = SourceType.LOCAL, shareRoot = "D:/media")
         assertEquals(emptyList(), c.validate())
     }
+
+    @Test
+    fun `shareRoot normalization handles windows paste forms`() {
+        // 评审 I6：资源管理器粘贴的 \\NAS\media\movies → 首段共享名+子路径
+        assertEquals("media/movies", smb("media\\movies").normalizedShareRoot)
+        assertEquals("media", smb("/media/").normalizedShareRoot)
+        assertEquals("media", smb("  media  ").normalizedShareRoot)
+        assertEquals(null, smb(" / ").normalizedShareRoot)
+    }
+
+    @Test
+    fun `blank after normalization fails validation`() {
+        val c = smb(" / ")
+        assertTrue(c.validate().any { it.contains("shareRoot") })
+    }
+
+    private fun smb(root: String) =
+        MediaSourceConfig(id = "s1", name = "NAS", type = SourceType.SMB, host = "192.168.1.10", shareRoot = root)
 }

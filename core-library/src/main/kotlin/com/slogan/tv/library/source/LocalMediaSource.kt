@@ -50,7 +50,8 @@ class LocalMediaSource(
                         ScanRules.isSkippedDir(dir.name) -> {
                             skipped++
                             false
-                        }                        else -> true
+                        }
+                        else -> true
                     }
                 }
                 .forEach { f ->

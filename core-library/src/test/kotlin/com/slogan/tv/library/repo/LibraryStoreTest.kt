@@ -71,6 +71,21 @@ abstract class LibraryStoreContract {
         assertEquals("media/沙丘 2（2024）.mkv", loaded.relativePath)
         assertTrue(loaded.sizeBytes == 1L && loaded.lastModifiedEpochMs == 2L)
     }
+
+    @Test
+    fun `removing a source drops its rows`() = runBlocking<Unit> {
+        val store = newStore()
+        val configB = MediaSourceConfig(
+            id = "s2", name = "U盘", type = SourceType.LOCAL, shareRoot = "D:/x",
+        )
+        store.saveSources(listOf(config, configB))
+        store.saveScanResult("s2", listOf(MediaFile("s2", "b.mkv", "b.mkv", 1L, 2L, "b.mkv")), emptyList())
+
+        store.saveSources(listOf(config)) // 只留 s1
+
+        assertEquals(listOf(config), store.loadSources())
+        assertEquals(0, store.loadAllFiles().size) // s2 的行级联清除，无幽灵文件
+    }
 }
 
 class InMemoryLibraryStoreTest : LibraryStoreContract() {

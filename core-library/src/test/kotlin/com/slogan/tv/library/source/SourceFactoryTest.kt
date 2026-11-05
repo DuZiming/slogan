@@ -54,4 +54,12 @@ class SourceFactoryTest {
 
         assertEquals("secret-pw", recordedPassword)
     }
+
+    @Test
+    fun `invalid config rejected with readable error`() {
+        val factory = SourceFactory(PlainCredentialCipher, { null })
+        val invalid = MediaSourceConfig("s1", "NAS", SourceType.SMB, host = null, shareRoot = null)
+        val error = kotlin.test.assertFailsWith<IllegalArgumentException> { factory.create(invalid) }
+        assertTrue(error.message!!.contains("host"))
+    }
 }

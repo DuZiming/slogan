@@ -22,17 +22,28 @@ data class MediaSourceConfig(
     val effectivePort: Int
         get() = port ?: 445
 
+    /**
+     * shareRoot 归一化（评审 I6）：trim、反斜杠→正斜杠、去首尾斜杠。
+     * Windows 粘贴的 \\NAS\media\movies、/media/、media\ 等形态统一为 "media/movies"。
+     */
+    val normalizedShareRoot: String?
+        get() = shareRoot
+            ?.trim()
+            ?.replace('\\', '/')
+            ?.trim('/')
+            ?.takeIf { it.isNotEmpty() }
+
     /** 字段校验，返回中文错误文案；空列表 = 通过。 */
     fun validate(): List<String> = buildList {
         when (type) {
             SourceType.SMB -> {
                 if (host.isNullOrBlank()) add("SMB 源必须填写主机地址 host")
-                if (shareRoot.isNullOrBlank()) add("SMB 源必须填写共享目录 shareRoot")
+                if (normalizedShareRoot == null) add("SMB 源必须填写共享目录 shareRoot")
                 if (port != null && (port !in 1..65535)) add("端口必须在 1..65535")
             }
             SourceType.LOCAL -> {
                 if (host != null) add("本地源不应填写主机地址 host")
-                if (shareRoot.isNullOrBlank()) add("本地源必须填写根路径 shareRoot")
+                if (normalizedShareRoot == null) add("本地源必须填写根路径 shareRoot")
             }
         }
     }

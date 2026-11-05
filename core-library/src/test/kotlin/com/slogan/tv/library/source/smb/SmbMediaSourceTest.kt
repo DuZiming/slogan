@@ -68,4 +68,27 @@ class SmbMediaSourceTest {
         assertEquals(listOf("ok.mkv"), r.files.map { it.name })
         assertEquals(1, hints.size)
     }
+
+    @Test
+    fun `root level failure marks result fatal`() = runBlocking<Unit> {
+        val fake = FakeSmbFileClient(tree())
+        fake.failWith("media", SmbCommunicationException("x", SmbCommunicationException.Kind.AUTH))
+        val r = SmbMediaSource("nas", "NAS", "media") { fake }.scan()
+        org.junit.Assert.assertNotNull("root failure must set fatalError", r.fatalError)
+        assertEquals(true, r.files.isEmpty())
+    }
+
+    @Test
+    fun `unexpected runtime exception becomes hint not crash`() = runBlocking<Unit> {
+        val fake = object : SmbFileClient {
+            override suspend fun list(dir: String): List<SmbEntry> = throw IllegalStateException("boom")
+            override fun close() = Unit
+        }
+        val hints = mutableListOf<com.slogan.tv.library.source.ScanUpdate.ErrorHint>()
+        val r = SmbMediaSource("nas", "NAS", "media") { fake }
+            .scan { u -> if (u is com.slogan.tv.library.source.ScanUpdate.ErrorHint) hints += u }
+        assertEquals(1, hints.size)
+        assertEquals(true, r.files.isEmpty())
+        org.junit.Assert.assertNotNull(r.fatalError)
+    }
 }

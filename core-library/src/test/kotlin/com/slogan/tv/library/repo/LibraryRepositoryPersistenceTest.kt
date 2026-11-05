@@ -78,4 +78,33 @@ class LibraryRepositoryPersistenceTest {
         assertEquals(1, snap.movies().size)
         assertEquals(snap, repo.snapshot())
     }
+
+    private class EmptyScanSource(
+        override val id: String,
+        override val name: String,
+    ) : MediaSource {
+        override suspend fun scan(callback: (ScanUpdate) -> Unit): ScanResult =
+            ScanResult(emptyList(), emptyList(), 0)
+    }
+
+    @Test
+    fun `failing refresh preserves last good rows`() = runBlocking<Unit> {
+        val store = InMemoryLibraryStore()
+        LibraryRepository(listOf(StaticSource("nas", "NAS", "a.mkv")), store).refresh()
+
+        // 同 id 源下次刷新抛异常 → 保留 last-good，不清库（评审 I2）
+        LibraryRepository(listOf(FailingSource("nas", "NAS")), store).refresh()
+
+        assertEquals(1, store.loadAllFiles().size)
+    }
+
+    @Test
+    fun `healthy empty scan replaces rows`() = runBlocking<Unit> {
+        val store = InMemoryLibraryStore()
+        LibraryRepository(listOf(StaticSource("nas", "NAS", "a.mkv")), store).refresh()
+
+        LibraryRepository(listOf(EmptyScanSource("nas", "NAS")), store).refresh()
+
+        assertEquals(0, store.loadAllFiles().size) // 真扫出 0 个文件：合法结果，替换
+    }
 }
