@@ -1,15 +1,23 @@
 # Brainstorming session files
 .superpowers/
 
+# Claude Code worktrees
+.claude/worktrees/
+
 # Build artifacts
 build/
 *.apk
 *.aab
+.gradle/
+.kotlin/
 
 # IDE
 .idea/
 *.iml
 .vscode/
+
+# Local config
+local.properties
 
 # OS
 Thumbs.db
