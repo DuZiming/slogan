@@ -91,8 +91,14 @@ class SmbMediaSource(
             ScanResult(files = files, bdmvDirs = bdmvDirs, skippedCount = skipped)
         }
 
-    internal fun describe(e: SmbCommunicationException): String =
-        "[${e.kind}] ${e.message ?: "SMB 通信错误"}"
+    /** 错误分类 → 用户可读文案（spec：SMB1 明确不支持、错误不静默）。 */
+    internal fun describe(e: SmbCommunicationException): String = when (e.kind) {
+        SmbCommunicationException.Kind.AUTH -> "认证失败，请检查账号密码"
+        SmbCommunicationException.Kind.TIMEOUT -> "连接超时，请检查主机地址与网络"
+        SmbCommunicationException.Kind.PROTOCOL ->
+            "协议协商失败（该设备可能仅支持 SMB1，slogan 暂不支持 SMB1）"
+        SmbCommunicationException.Kind.IO -> e.message ?: "IO 错误"
+    }
 
     private companion object {
         const val PROGRESS_EVERY = 100
