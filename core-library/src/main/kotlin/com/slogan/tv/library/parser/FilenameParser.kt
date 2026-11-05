@@ -51,14 +51,20 @@ object FilenameParser {
         val titleStem =
             if (yearMatch != null) stemNoEp.removeRange(yearMatch.range) else stemNoEp
 
+        // 回退契约：清洗后为空 / 纯符号 / 纯数字 → 用原始文件名，标记未识别
+        val cleaned = cleanTitle(titleStem)
+        val readable = cleaned.any { it.isLetter() }
+        val (title, usedFallback) =
+            if (readable) cleaned to false else stem to true
+
         return ParsedFileName(
-            title = cleanTitle(titleStem),
+            title = title,
             year = year,
             season = episode?.season,
             episodes = episode?.episodes,
             qualityTokens = detectQualityTokens(stem),
             isTvShow = episode != null,
-            usedFallback = false,
+            usedFallback = usedFallback,
         )
     }
 
