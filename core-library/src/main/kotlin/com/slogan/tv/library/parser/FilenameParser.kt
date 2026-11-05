@@ -155,8 +155,8 @@ object FilenameParser {
     private fun atTokenBoundary(s: String, start: Int, end: Int): Boolean {
         val before = if (start == 0) null else s[start - 1]
         val after = if (end == s.length - 1) null else s[end + 1]
-        val beforeOk = before == null || before in "._ -[(("
-        val afterOk = after == null || after in "._ -)])"
+        val beforeOk = before == null || before in "._ -[((" || before in "（【［"
+        val afterOk = after == null || after in "._ -)])" || after in "）】］"
         return beforeOk && afterOk
     }
 
@@ -189,12 +189,12 @@ object FilenameParser {
         return basicClean(titleZone)
     }
 
-    /** 初步清洗：分隔符归一为空格、折叠多空格、修剪首尾。 */
+    /** 初步清洗：分隔符归一为空格、折叠多空格、修剪首尾与空括号（含全角/方头）。 */
     private fun basicClean(raw: String): String =
         raw.replace('_', ' ')
             .replace('.', ' ')
             .replace(Regex("\\s+"), " ")
             .trim()
-            .trim('(', ')', '（', '）')
+            .trim('(', ')', '（', '）', '[', ']', '【', '】', '［', '］')
             .trim()
 }

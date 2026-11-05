@@ -37,4 +37,18 @@ class EdgeCaseTest {
             throw AssertionError("parser threw for degenerate input", e)
         }
     }
+
+    @Test
+    fun `fullwidth parenthesized year`() {
+        val r = FilenameParser.parse("沙丘（2024）.2160p.WEB-DL.mkv")
+        assertEquals(2024, r.year)
+        assertEquals("沙丘", r.title)
+    }
+
+    @Test
+    fun `square bracket year`() {
+        val r = FilenameParser.parse("阿凡达【2009】.mkv")
+        assertEquals(2009, r.year)
+        assertEquals("阿凡达", r.title)
+    }
 }
