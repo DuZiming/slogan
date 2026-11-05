@@ -74,8 +74,14 @@ object FilenameParser {
         val fragmentRange: IntRange,
     )
 
-    /** 季集模式（按优先级）：S01E05[E06] / E05-E06 / 单独 E05 / 中文 第X季第Y集。 */
+    /** 季集模式（按优先级）：S02E01-E03 / S01E05E06E07 / E05-E06 / E05E06E07 / 中文季集（含范围、无季、期号）。 */
     private fun findEpisodeInfo(stem: String): EpisodeInfo? {
+        SE_RANGE.find(stem)?.let { m ->
+            val season = m.groupValues[1].toInt()
+            val start = m.groupValues[2].toInt()
+            val end = m.groupValues[3].toInt()
+            return EpisodeInfo(season, minOf(start, end)..maxOf(start, end), m.range)
+        }
         SE_COMBINED.find(stem)?.let { m ->
             val season = m.groupValues[1].toInt()
             val start = m.groupValues[2].toInt()
@@ -87,26 +93,50 @@ object FilenameParser {
             val end = m.groupValues[2].toInt()
             return EpisodeInfo(null, minOf(start, end)..maxOf(start, end), m.range)
         }
-        E_LONE.find(stem)?.let { m ->
-            val ep = m.groupValues[1].toInt()
-            return EpisodeInfo(null, ep..ep, m.range)
+        E_COMBINED.find(stem)?.let { m ->
+            val start = m.groupValues[1].toInt()
+            val end = m.groupValues[2].toIntOrNull() ?: start
+            return EpisodeInfo(null, minOf(start, end)..maxOf(start, end), m.range)
+        }
+        CN_SEASON_RANGE.find(stem)?.let { m ->
+            val season = m.groupValues[1].toInt()
+            val start = m.groupValues[2].toInt()
+            val end = m.groupValues[3].toInt()
+            return EpisodeInfo(season, minOf(start, end)..maxOf(start, end), m.range)
         }
         CN_SEASON_EPISODE.find(stem)?.let { m ->
             val season = m.groupValues[1].toInt()
             val ep = m.groupValues[2].toInt()
             return EpisodeInfo(season, ep..ep, m.range)
         }
+        CN_RANGE.find(stem)?.let { m ->
+            val start = m.groupValues[1].toInt()
+            val end = m.groupValues[2].toInt()
+            return EpisodeInfo(null, minOf(start, end)..maxOf(start, end), m.range)
+        }
+        CN_LONE.find(stem)?.let { m ->
+            val ep = m.groupValues[1].toInt()
+            return EpisodeInfo(null, ep..ep, m.range)
+        }
         return null
     }
 
+    private val SE_RANGE =
+        Regex("(?<!\\w)[sS](\\d{1,2})[eE](\\d{1,3})\\s*-\\s*(?:[sS]\\d{1,2})?[eE](\\d{1,3})(?!\\w)")
     private val SE_COMBINED =
-        Regex("(?<!\\w)[sS](\\d{1,2})[eE](\\d{1,3})(?:[eE](\\d{1,3}))?(?!\\w)")
+        Regex("(?<!\\w)[sS](\\d{1,2})[eE](\\d{1,3})(?:[eE](\\d{1,3}))*(?!\\w)")
     private val E_RANGE =
         Regex("(?<!\\w)[eE](\\d{1,3})\\s*-\\s*[eE](\\d{1,3})(?!\\w)")
-    private val E_LONE =
-        Regex("(?<!\\w)[eE](\\d{1,3})(?!\\w)")
+    private val E_COMBINED =
+        Regex("(?<!\\w)[eE](\\d{1,3})(?:[eE](\\d{1,3}))*(?!\\w)")
+    private val CN_SEASON_RANGE =
+        Regex("第(\\d{1,2})季.*?第(\\d{1,3})\\s*[-–~至]\\s*(\\d{1,3})[集话話期]")
     private val CN_SEASON_EPISODE =
         Regex("第(\\d{1,2})季.*?第(\\d{1,3})[集话話]")
+    private val CN_RANGE =
+        Regex("第(\\d{1,3})\\s*[-–~至]\\s*(\\d{1,3})[集话話期]")
+    private val CN_LONE =
+        Regex("第(\\d{1,3})[集期]")
 
     /** 剥离白名单内的视频扩展名；不是视频扩展名则原样返回。 */
     internal fun stripExtension(name: String): String {
