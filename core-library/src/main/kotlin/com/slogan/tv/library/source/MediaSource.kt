@@ -21,6 +21,8 @@ data class ScanResult(
     val files: List<MediaFile>,
     val bdmvDirs: List<MediaFile>,
     val skippedCount: Int,
+    /** 连接级失败（认证/超时/根目录不可达）时非空：结果不代表库的真实状态，持久层应保留 last-good。 */
+    val fatalError: String? = null,
 )
 
 sealed interface ScanUpdate {

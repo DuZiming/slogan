@@ -1,0 +1,27 @@
+CREATE TABLE media_files (
+  source_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  name TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  mtime INTEGER NOT NULL,
+  relative_path TEXT,
+  is_bdmv INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (source_id, path)
+);
+
+deleteBySource:
+DELETE FROM media_files WHERE source_id = ?;
+
+insertFile:
+INSERT OR REPLACE INTO media_files(source_id, path, name, size_bytes, mtime, relative_path, is_bdmv)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectAllFiles:
+SELECT * FROM media_files WHERE is_bdmv = 0;
+
+selectAllBdmv:
+SELECT * FROM media_files WHERE is_bdmv = 1;
+
+-- 评审 I4：源被移除后级联清行，防幽灵文件
+deleteOrphanFiles:
+DELETE FROM media_files WHERE source_id NOT IN (SELECT id FROM sources);

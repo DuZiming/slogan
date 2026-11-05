@@ -1,7 +1,6 @@
 package com.slogan.tv.library.source
 
 import com.slogan.tv.library.model.MediaFile
-import com.slogan.tv.library.parser.FilenameParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -16,7 +15,7 @@ import kotlin.coroutines.coroutineContext
 class LocalMediaSource(
     override val id: String,
     override val name: String,
-    private val root: File,
+    val root: File,
 ) : MediaSource {
 
     override suspend fun scan(callback: (ScanUpdate) -> Unit): ScanResult =
@@ -48,7 +47,7 @@ class LocalMediaSource(
                             skipped++
                             false
                         }
-                        isSystemOrHiddenDir(dir.name) -> {
+                        ScanRules.isSkippedDir(dir.name) -> {
                             skipped++
                             false
                         }
@@ -58,10 +57,9 @@ class LocalMediaSource(
                 .forEach { f ->
                     if (!f.isFile) return@forEach
                     scanned++
-                    val ext = f.name.substringAfterLast('.', "").lowercase()
                     when {
                         f.name.startsWith(".") -> skipped++
-                        ext in FilenameParser.VIDEO_EXTENSIONS -> {
+                        ScanRules.isVideoFile(f.name) -> {
                             if (f.length() == 0L) {
                                 skipped++ // 白名单扩展但 0 字节：残缺下载，跳过
                             } else {
@@ -89,18 +87,7 @@ class LocalMediaSource(
 
     private fun rel(f: File): String = root.relativeToOrSelf(f).invariantSeparatorsPath
 
-    private fun isSystemOrHiddenDir(name: String): Boolean =
-        name.startsWith(".") || name.lowercase() in SYSTEM_DIRS
-
     private companion object {
         const val PROGRESS_EVERY = 100
-
-        /** Windows/NAS 系统目录（小写比较）：回收站、缩略图、卷信息、丢失簇。 */
-        val SYSTEM_DIRS = setOf(
-            "\$recycle.bin", "recycler", "recycled",
-            "system volume information",
-            "#recycle", "#recyclebin", "@eadir", "@recycle",
-            "lost+found",
-        )
     }
 }

@@ -1,0 +1,24 @@
+CREATE TABLE sources (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  host TEXT,
+  port INTEGER,
+  share_root TEXT NOT NULL,
+  username TEXT,
+  domain TEXT
+);
+
+insertSource:
+INSERT OR REPLACE INTO sources(id, name, type, host, port, share_root, username, domain)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAllSources:
+SELECT * FROM sources ORDER BY id;
+
+deleteSource:
+DELETE FROM sources WHERE id = ?;
+
+-- 评审 I4：saveSources 为整体替换语义，移除不再出现的源
+deleteSourcesNotIn:
+DELETE FROM sources WHERE id NOT IN ?;
