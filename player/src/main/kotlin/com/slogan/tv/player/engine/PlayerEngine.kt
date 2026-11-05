@@ -26,6 +26,18 @@ data class PlaybackOptions(
     val startMs: Long? = null,
 )
 
+enum class TrackKind { AUDIO, SUB, VIDEO }
+
+data class TrackInfo(
+    val id: Int,
+    val kind: TrackKind,
+    val title: String?,
+    val language: String?,
+    val codec: String?,
+    val isDefault: Boolean,
+    val isSelected: Boolean,
+)
+
 /**
  * 播放引擎抽象（spec §6 引擎解耦）：UI 只面对本接口。
  * 实现约定：attach/detach 与 Surface 生命周期配对；load 可多次调用（换集）；
@@ -33,6 +45,12 @@ data class PlaybackOptions(
  */
 interface PlayerEngine {
     val state: StateFlow<EngineState>
+
+    /** 当前文件的轨道列表（内容装载后返回非空）。 */
+    fun tracks(): List<TrackInfo>
+
+    /** 选择轨道；id=null 表示禁用该类轨道（如关字幕）。 */
+    fun selectTrack(kind: TrackKind, id: Int?)
 
     fun attach(surface: Surface)
 

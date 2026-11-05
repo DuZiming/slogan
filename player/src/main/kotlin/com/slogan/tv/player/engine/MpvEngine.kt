@@ -97,6 +97,42 @@ class MpvEngine(context: Context) : PlayerEngine {
         mpv.observeProperty("eof-reached", 5)
     }
 
+    override fun tracks(): List<TrackInfo> {
+        val count = runCatching { mpv.getPropertyInt("track-list/count") }.getOrNull() ?: return emptyList()
+        return (0 until count).mapNotNull { n ->
+            val type = runCatching { mpv.getPropertyString("track-list/$n/type") }.getOrNull()
+                ?: return@mapNotNull null
+            val kind = when (type) {
+                "audio" -> TrackKind.AUDIO
+                "sub" -> TrackKind.SUB
+                "video" -> TrackKind.VIDEO
+                else -> return@mapNotNull null
+            }
+            TrackInfo(
+                id = runCatching { mpv.getPropertyInt("track-list/$n/id") }.getOrNull() ?: return@mapNotNull null,
+                kind = kind,
+                title = runCatching { mpv.getPropertyString("track-list/$n/title") }.getOrNull(),
+                language = runCatching { mpv.getPropertyString("track-list/$n/lang") }.getOrNull(),
+                codec = runCatching { mpv.getPropertyString("track-list/$n/codec") }.getOrNull(),
+                isDefault = runCatching { mpv.getPropertyBoolean("track-list/$n/default") }.getOrNull() == true,
+                isSelected = runCatching { mpv.getPropertyBoolean("track-list/$n/selected") }.getOrNull() == true,
+            )
+        }
+    }
+
+    override fun selectTrack(kind: TrackKind, id: Int?) {
+        val property = when (kind) {
+            TrackKind.AUDIO -> "aid"
+            TrackKind.SUB -> "sid"
+            TrackKind.VIDEO -> "vid"
+        }
+        if (id == null) {
+            mpv.setPropertyString(property, "no")
+        } else {
+            mpv.setPropertyInt(property, id)
+        }
+    }
+
     override fun attach(surface: Surface) {
         mpv.attachSurface(surface)
         surfaceAttached = true
