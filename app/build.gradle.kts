@@ -29,4 +29,5 @@ dependencies {
     implementation(project(":player"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.ktx)
+    debugImplementation(libs.smbj)
 }

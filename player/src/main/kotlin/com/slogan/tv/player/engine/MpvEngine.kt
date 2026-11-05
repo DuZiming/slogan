@@ -31,6 +31,12 @@ class MpvEngine(context: Context) : PlayerEngine {
     private var buffering = false
     private var surfaceAttached = false
 
+    private val logObserver = object : dev.jdtech.mpv.MPVLib.LogObserver {
+        override fun logMessage(prefix: String, level: Int, text: String) {
+            android.util.Log.d("MpvEngine", "log[$prefix/$level] $text")
+        }
+    }
+
     private val observer = object : MPVLib.EventObserver {
         override fun eventProperty(property: String) {
             android.util.Log.d("MpvEngine", "event[$property]")
@@ -85,10 +91,15 @@ class MpvEngine(context: Context) : PlayerEngine {
     }
 
     init {
+        // AAR 的 wrapper 不建 libmpv render context（vo=libmpv 只出黑屏）；
+        // 用 mpv 内建 android EGL 上下文直接渲染到 attachSurface 传入的窗口
+        mpv.setOptionString("vo", "gpu")
+        mpv.setOptionString("gpu-context", "android")
         mpv.setOptionString("hwdec", "auto")
         // 播完停在末帧（不进 Idle），Ended 状态由 eof-reached 驱动
         mpv.setOptionString("keep-open", "always")
         mpv.init()
+        mpv.addLogObserver(logObserver)
         mpv.addObserver(observer)
         mpv.observeProperty("time-pos", 1)
         mpv.observeProperty("duration", 2)
@@ -153,7 +164,7 @@ class MpvEngine(context: Context) : PlayerEngine {
         }
         options.ao?.let { mpv.setOptionString("ao", it) }
         // 未挂 Surface 时禁用视频输出，保证纯音频/无界面场景可走时钟
-        mpv.setOptionString("vo", if (surfaceAttached) "libmpv" else "null")
+        mpv.setPropertyString("vo", if (surfaceAttached) "gpu" else "null")
         val startOption = options.startMs?.let { "start=+${it / 1000.0}" }
         _state.value = EngineState.Preparing
         mpv.command(
