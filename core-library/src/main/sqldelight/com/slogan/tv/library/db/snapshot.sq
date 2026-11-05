@@ -1,0 +1,13 @@
+CREATE TABLE snapshot (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  generated_at INTEGER NOT NULL
+);
+
+insertSnapshot:
+INSERT INTO snapshot(generated_at) VALUES (?);
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+lastSnapshotTime:
+SELECT generated_at FROM snapshot ORDER BY id DESC LIMIT 1;
