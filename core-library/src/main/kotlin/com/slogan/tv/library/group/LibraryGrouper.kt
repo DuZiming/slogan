@@ -2,6 +2,7 @@ package com.slogan.tv.library.group
 
 import com.slogan.tv.library.model.LibraryEntry
 import com.slogan.tv.library.model.MediaFile
+import com.slogan.tv.library.model.QualityToken
 import com.slogan.tv.library.parser.FilenameParser
 import com.slogan.tv.library.parser.ParsedFileName
 
@@ -46,5 +47,21 @@ object LibraryGrouper {
             )
         }
         return movies + seriesEntries
+    }
+
+    /**
+     * 重载：BDMV 原盘文件夹（bdmvDirs 的 name 形如 "让子弹飞.2010/BDMV"）识别为
+     * 单个 Movie，强制带 BLURAY_DISC 标记；STREAM 内部文件由扫描器不递归（Task 9）。
+     */
+    fun group(files: List<MediaFile>, bdmvDirs: List<MediaFile>): List<LibraryEntry> {
+        val bdmvMovies = bdmvDirs.map { dir ->
+            val folderName = dir.name.removeSuffix("/BDMV").removeSuffix("\\BDMV")
+            val parsed = FilenameParser.parse(folderName)
+            LibraryEntry.Movie(
+                file = dir,
+                parsed = parsed.copy(qualityTokens = parsed.qualityTokens + QualityToken.BLURAY_DISC),
+            )
+        }
+        return group(files) + bdmvMovies
     }
 }
