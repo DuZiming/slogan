@@ -1,0 +1,50 @@
+package com.slogan.tv.library.group
+
+import com.slogan.tv.library.model.LibraryEntry
+import com.slogan.tv.library.model.MediaFile
+import com.slogan.tv.library.parser.FilenameParser
+import com.slogan.tv.library.parser.ParsedFileName
+
+/**
+ * 归组器（spec §5.4）：电影永不合并（同名不同版本各自成条目）；
+ * 剧集按 title.lowercase().trim() 归组，season null 归入 0 季；
+ * 集内按集号升序、同集多文件按文件名排序。
+ */
+object LibraryGrouper {
+
+    fun group(
+        files: List<MediaFile>,
+        parse: (String) -> ParsedFileName = FilenameParser::parse,
+    ): List<LibraryEntry> {
+        val movies = mutableListOf<LibraryEntry.Movie>()
+        val series = LinkedHashMap<String, Pair<String, MutableMap<Int, MutableList<LibraryEntry.Episode>>>>()
+
+        for (file in files) {
+            val parsed = parse(file.name)
+            val episodes = parsed.episodes
+            if (!parsed.isTvShow || episodes == null) {
+                movies += LibraryEntry.Movie(file, parsed)
+                continue
+            }
+            val entry = series.getOrPut(parsed.title.lowercase().trim()) {
+                parsed.title to mutableMapOf()
+            }
+            val seasons = entry.second
+            for (ep in episodes) {
+                seasons.getOrPut(parsed.season ?: 0) { mutableListOf() }
+                    .add(LibraryEntry.Episode(file, parsed, parsed.season, ep))
+            }
+        }
+
+        val seriesEntries = series.map { (_, value) ->
+            val (title, seasons) = value
+            LibraryEntry.Series(
+                title = title,
+                seasons = seasons.toSortedMap().mapValues { (_, eps) ->
+                    eps.sortedWith(compareBy({ it.episode }, { it.file.name }))
+                },
+            )
+        }
+        return movies + seriesEntries
+    }
+}
