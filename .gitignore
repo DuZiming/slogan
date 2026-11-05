@@ -18,6 +18,7 @@ build/
 
 # Local config
 local.properties
+local.smb-test.properties
 
 # OS
 Thumbs.db
