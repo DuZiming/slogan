@@ -41,22 +41,66 @@ object FilenameParser {
 
     fun parse(fileName: String): ParsedFileName {
         val stem = stripExtension(fileName)
-        val yearMatch = findYearToken(stem)
+
+        // 季集提取优先于年份：S01E05 的数字不能被当年份
+        val episode = findEpisodeInfo(stem)
+        val stemNoEp = if (episode != null) stem.removeRange(episode.fragmentRange) else stem
+        val yearMatch = findYearToken(stemNoEp)
 
         val year = yearMatch?.value?.toInt()
         val titleStem =
-            if (yearMatch != null) stem.removeRange(yearMatch.range) else stem
+            if (yearMatch != null) stemNoEp.removeRange(yearMatch.range) else stemNoEp
 
         return ParsedFileName(
             title = cleanTitle(titleStem),
             year = year,
-            season = null,
-            episodes = null,
+            season = episode?.season,
+            episodes = episode?.episodes,
             qualityTokens = detectQualityTokens(stem),
-            isTvShow = false,
+            isTvShow = episode != null,
             usedFallback = false,
         )
     }
+
+    internal data class EpisodeInfo(
+        val season: Int?,
+        val episodes: IntRange,
+        val fragmentRange: IntRange,
+    )
+
+    /** 季集模式（按优先级）：S01E05[E06] / E05-E06 / 单独 E05 / 中文 第X季第Y集。 */
+    private fun findEpisodeInfo(stem: String): EpisodeInfo? {
+        SE_COMBINED.find(stem)?.let { m ->
+            val season = m.groupValues[1].toInt()
+            val start = m.groupValues[2].toInt()
+            val end = m.groupValues[3].toIntOrNull() ?: start
+            return EpisodeInfo(season, minOf(start, end)..maxOf(start, end), m.range)
+        }
+        E_RANGE.find(stem)?.let { m ->
+            val start = m.groupValues[1].toInt()
+            val end = m.groupValues[2].toInt()
+            return EpisodeInfo(null, minOf(start, end)..maxOf(start, end), m.range)
+        }
+        E_LONE.find(stem)?.let { m ->
+            val ep = m.groupValues[1].toInt()
+            return EpisodeInfo(null, ep..ep, m.range)
+        }
+        CN_SEASON_EPISODE.find(stem)?.let { m ->
+            val season = m.groupValues[1].toInt()
+            val ep = m.groupValues[2].toInt()
+            return EpisodeInfo(season, ep..ep, m.range)
+        }
+        return null
+    }
+
+    private val SE_COMBINED =
+        Regex("(?<!\\w)[sS](\\d{1,2})[eE](\\d{1,3})(?:[eE](\\d{1,3}))?(?!\\w)")
+    private val E_RANGE =
+        Regex("(?<!\\w)[eE](\\d{1,3})\\s*-\\s*[eE](\\d{1,3})(?!\\w)")
+    private val E_LONE =
+        Regex("(?<!\\w)[eE](\\d{1,3})(?!\\w)")
+    private val CN_SEASON_EPISODE =
+        Regex("第(\\d{1,2})季.*?第(\\d{1,3})[集话話]")
 
     /** 剥离白名单内的视频扩展名；不是视频扩展名则原样返回。 */
     internal fun stripExtension(name: String): String {
