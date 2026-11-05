@@ -52,7 +52,7 @@ object FilenameParser {
             year = year,
             season = null,
             episodes = null,
-            qualityTokens = emptySet(),
+            qualityTokens = detectQualityTokens(stem),
             isTvShow = false,
             usedFallback = false,
         )
@@ -79,6 +79,28 @@ object FilenameParser {
         val afterOk = after == null || after in "._ -)])"
         return beforeOk && afterOk
     }
+
+    /** 画质/音轨 Token 识别规则：小写化后按 token 边界匹配，独立于标题清洗。 */
+    private val TOKEN_RULES: List<Pair<Regex, QualityToken>> = listOf(
+        "(?<!\\w)(?:2160[pi]|4k|uhd)(?!\\w)" to QualityToken.FOUR_K,
+        "(?<!\\w)hdr10[+](?!\\w)|(?<!\\w)hdr10plus(?!\\w)" to QualityToken.HDR10_PLUS,
+        "(?<!\\w)hdr10?(?![+p])(?!\\w)" to QualityToken.HDR10,
+        "(?<!\\w)(?:dovi|dolby[.]?vision|dv)(?!\\w)" to QualityToken.DOLBY_VISION,
+        "(?<!\\w)remux(?!\\w)" to QualityToken.REMUX,
+        "(?<!\\w)blu[.]?ray(?!\\w)" to QualityToken.BLURAY_DISC,
+        "(?<!\\w)truehd(?!\\w)" to QualityToken.TRUEHD,
+        "(?<!\\w)dts(?:[.\\-]?hd)?[.\\-]?ma(?!\\w)" to QualityToken.DTS_HD_MA,
+        "(?<!\\w)dts(?![.\\-]?(?:hd|ma))(?![.\\-]hd)(?!\\w)" to QualityToken.DTS,
+        "(?<!\\w)(?:eac3|ddp(?:[.\\d]*)|dd[+](?:[.\\d]*))(?!\\w)" to QualityToken.EAC3,
+        "(?<!\\w)ac3(?!\\w)" to QualityToken.AC3,
+        "(?<!\\w)aac(?:[.\\d]+)?(?!\\w)" to QualityToken.AAC,
+        "(?<!\\w)atmos(?!\\w)" to QualityToken.ATMOS,
+    ).map { (pattern, token) -> Regex(pattern) to token }
+
+    internal fun detectQualityTokens(stem: String): Set<QualityToken> =
+        TOKEN_RULES.mapNotNull { (pattern, token) ->
+            if (pattern.containsMatchIn(stem.lowercase())) token else null
+        }.toSet()
 
     /** 标题清洗：首个发行标签之前的都算标题区，其后（含 -GROUP）整段丢弃。 */
     private fun cleanTitle(stem: String): String {
