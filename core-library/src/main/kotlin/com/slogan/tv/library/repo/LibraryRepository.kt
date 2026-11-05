@@ -2,28 +2,70 @@ package com.slogan.tv.library.repo
 
 import com.slogan.tv.library.group.LibraryGrouper
 import com.slogan.tv.library.model.LibraryEntry
+import com.slogan.tv.library.model.MediaFile
 import com.slogan.tv.library.source.MediaSource
+import com.slogan.tv.library.source.ScanResult
 import com.slogan.tv.library.source.ScanUpdate
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
 /**
  * 媒体库仓库：并行扫描全部源，归组为快照并缓存（spec §6：扫描在可取消的后台服务执行）。
+ * 持久化（可选注入 store）：
+ * - refresh() 各源独立捕获异常（失败源 → ErrorHint + 清除该源数据，健康源照常入库）；
+ * - restore() 不触发扫描，从持久层装配最近快照——NAS 离线启动也能看到库（spec §5.4 离线可用）。
  */
-class LibraryRepository(private val sources: List<MediaSource>) {
+class LibraryRepository(
+    private val sources: List<MediaSource>,
+    private val store: LibraryStore? = null,
+) {
 
     private var cached: LibrarySnapshot? = null
 
     suspend fun refresh(callback: (ScanUpdate) -> Unit = {}): LibrarySnapshot {
-        val results = coroutineScope {
-            sources.map { source -> async { source.scan(callback) } }.map { it.await() }
+        val results: List<Pair<MediaSource, ScanResult?>> = coroutineScope {
+            sources.map { source ->
+                async {
+                    try {
+                        source to source.scan(callback)
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        callback(ScanUpdate.ErrorHint(source.id, e.message ?: "扫描失败：${source.name}"))
+                        source to null
+                    }
+                }
+            }.map { it.await() }
         }
-        val files = results.flatMap { it.files }
-        val bdmvDirs = results.flatMap { it.bdmvDirs }
+
+        val healthy = results.mapNotNull { (_, r) -> r }
+        val files = healthy.flatMap { it.files }
+        val bdmvDirs = healthy.flatMap { it.bdmvDirs }
+
+        store?.let { s ->
+            results.forEach { (source, r) ->
+                if (r != null) s.saveScanResult(source.id, r.files, r.bdmvDirs)
+                else s.saveScanResult(source.id, emptyList(), emptyList()) // 失败源清旧数据，防止"幽灵文件"
+            }
+        }
 
         val snapshot = LibrarySnapshot(
             entries = LibraryGrouper.group(files, bdmvDirs),
             generatedAtEpochMs = System.currentTimeMillis(),
+        )
+        cached = snapshot
+        store?.recordSnapshotTime(snapshot.generatedAtEpochMs)
+        return snapshot
+    }
+
+    /** 从持久层装配最近快照；无持久层或从未扫描过返回 null。不触发任何网络/磁盘扫描。 */
+    suspend fun restore(): LibrarySnapshot? {
+        val s = store ?: return null
+        val generatedAt = s.lastSnapshotTime() ?: return null
+        val files: List<MediaFile> = s.loadAllFiles()
+        val bdmvDirs: List<MediaFile> = s.loadAllBdmvDirs()
+        val snapshot = LibrarySnapshot(
+            entries = LibraryGrouper.group(files, bdmvDirs),
+            generatedAtEpochMs = generatedAt,
         )
         cached = snapshot
         return snapshot
