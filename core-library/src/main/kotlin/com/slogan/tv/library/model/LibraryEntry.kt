@@ -9,6 +9,8 @@ data class MediaFile(
     val name: String,
     val sizeBytes: Long,
     val lastModifiedEpochMs: Long,
+    /** 相对源根目录的路径（'/' 分隔），供归组器在文件名解析失败时用文件夹名救标题。 */
+    val relativePath: String? = null,
 )
 
 /** 媒体库条目：电影平铺；剧集归组为 Series，Episode 嵌在 seasons 内。 */

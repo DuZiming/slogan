@@ -9,7 +9,10 @@ interface MediaSource {
     val id: String
     val name: String
 
-    /** 扫描源；callback 汇报进度与错误提示，永不抛异常（错误走 ErrorHint）。 */
+    /**
+     * 扫描源；callback 汇报进度与错误提示，永不抛异常（错误走 ErrorHint）。
+     * 注意：源可能并行扫描（见 LibraryRepository），callback 可能从不同线程并发调用，需线程安全。
+     */
     suspend fun scan(callback: (ScanUpdate) -> Unit = {}): ScanResult
 }
 
