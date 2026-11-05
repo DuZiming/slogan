@@ -27,7 +27,7 @@ class FakeSmbFileClientTest {
     }
 
     @Test
-    fun `injected exception is thrown`() = runBlocking {
+    fun `injected exception is thrown`() = runBlocking<Unit> {
         val fake = FakeSmbFileClient(emptyMap())
         fake.failWith("share", SmbCommunicationException("bad credentials", SmbCommunicationException.Kind.AUTH))
         assertFailsWith<SmbCommunicationException> { fake.list("share") }

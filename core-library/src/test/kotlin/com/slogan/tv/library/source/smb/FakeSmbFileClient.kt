@@ -6,7 +6,7 @@ package com.slogan.tv.library.source.smb
  * failWith 可对指定目录预置异常。
  */
 class FakeSmbFileClient(
-    private val dirs: MutableMap<String, List<SmbEntry>> = mutableMapOf(),
+    private val dirs: Map<String, List<SmbEntry>> = emptyMap(),
 ) : SmbFileClient {
 
     private val failures = mutableMapOf<String, SmbCommunicationException>()
