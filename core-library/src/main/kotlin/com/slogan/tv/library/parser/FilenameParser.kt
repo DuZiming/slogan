@@ -7,7 +7,7 @@ import com.slogan.tv.library.model.QualityToken
  */
 object FilenameParser {
 
-    private val VIDEO_EXTENSIONS =
+    internal val VIDEO_EXTENSIONS =
         setOf("mkv", "mp4", "avi", "mov", "flv", "ts", "m2ts", "wmv", "webm", "iso")
     private val YEAR_REGEX = Regex("(?:19|20)\\d{2}")
 
