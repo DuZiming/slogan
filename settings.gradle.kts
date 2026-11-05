@@ -23,3 +23,4 @@ dependencyResolutionManagement {
 rootProject.name = "slogan"
 include(":app")
 include(":core-library")
+include(":player")

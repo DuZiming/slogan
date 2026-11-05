@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.slogan.tv.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.slogan.tv"
@@ -26,6 +26,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":player"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.ktx)
 }
