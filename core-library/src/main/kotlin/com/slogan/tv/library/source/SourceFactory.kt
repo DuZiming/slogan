@@ -8,12 +8,15 @@ import java.io.File
 /**
  * 源工厂：配置 → MediaSource 实例。
  * smbClientFactory 缝隙默认给 SmbjClient（测试注入录制型实现）。
+ * NFS 的实现在 :player 模块（libnfs JNI），经 nfsSourceCreator 注入；
+ * core 保持纯 JVM，未注入时创建 NFS 源抛 IllegalStateException。
  */
 class SourceFactory(
     private val credentialCipher: CredentialCipher,
     private val passwordStore: (String) -> String?,
     private val smbClientFactory: suspend (MediaSourceConfig, String?) -> SmbFileClient =
         { config, password -> SmbjClient(config, password) },
+    private val nfsSourceCreator: ((MediaSourceConfig) -> MediaSource)? = null,
 ) {
     fun create(config: MediaSourceConfig): MediaSource {
         val errors = config.validate()
@@ -27,6 +30,9 @@ class SourceFactory(
                     val password = passwordStore(config.id)?.let { credentialCipher.decrypt(it) }
                     smbClientFactory(config, password)
                 }
+            SourceType.NFS ->
+                nfsSourceCreator?.invoke(config)
+                    ?: error("NFS 源需要注入工厂（:player 模块的 createNfsSource）")
         }
     }
 }

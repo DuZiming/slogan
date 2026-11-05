@@ -1,7 +1,7 @@
 package com.slogan.tv.library.source
 
-/** 媒体源类型（NFS 属后续计划）。 */
-enum class SourceType { LOCAL, SMB }
+/** 媒体源类型（NFS 扫描/播放在计划 3 落地）。 */
+enum class SourceType { LOCAL, SMB, NFS }
 
 /**
  * 媒体源配置（spec §5.4 设置页：媒体源管理）。
@@ -36,9 +36,9 @@ data class MediaSourceConfig(
     /** 字段校验，返回中文错误文案；空列表 = 通过。 */
     fun validate(): List<String> = buildList {
         when (type) {
-            SourceType.SMB -> {
-                if (host.isNullOrBlank()) add("SMB 源必须填写主机地址 host")
-                if (normalizedShareRoot == null) add("SMB 源必须填写共享目录 shareRoot")
+            SourceType.SMB, SourceType.NFS -> {
+                if (host.isNullOrBlank()) add("${type.name} 源必须填写主机地址 host")
+                if (normalizedShareRoot == null) add("${type.name} 源必须填写共享目录 shareRoot")
                 if (port != null && (port !in 1..65535)) add("端口必须在 1..65535")
             }
             SourceType.LOCAL -> {
