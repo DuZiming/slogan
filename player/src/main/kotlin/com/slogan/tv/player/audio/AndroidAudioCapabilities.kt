@@ -14,16 +14,15 @@ class AndroidAudioCapabilities(
 ) : () -> AudioCapabilities {
 
     override fun invoke(): AudioCapabilities {
-        val encodings = runCatching {
+        val encodings: Set<String> = runCatching {
             val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            @Suppress("DEPRECATION")
-            val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            devices
-                .flatMap { device ->
-                    if (device.supportsEncodings != null) device.supportsEncodings.toList() else emptyList()
+            val result = mutableSetOf<String>()
+            for (device in am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+                for (encoding in device.getEncodings()) {
+                    encoding.toCodecName()?.let { result.add(it) }
                 }
-                .mapNotNull { encoding -> encoding.toCodecName() }
-                .toSet()
+            }
+            result
         }.getOrDefault(emptySet())
         return AudioCapabilities(encodings)
     }
