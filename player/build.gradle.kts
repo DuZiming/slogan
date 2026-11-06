@@ -37,7 +37,6 @@ android {
 
 dependencies {
     api(project(":core-library"))
-    api(libs.libmpv)
     implementation(libs.coroutines.core)
 
     androidTestImplementation(libs.androidx.test.runner)
