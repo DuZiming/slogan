@@ -238,7 +238,7 @@ Java_com_slogan_tv_player_core_MpvCore_nativeAttachSurface(
     /* 创建 mpv 渲染上下文（核心差异：自有构建暴露 mpv 句柄，这里直接用） */
     mpv_render_param params[] = {
         {MPV_RENDER_PARAM_API_TYPE, MPV_RENDER_API_TYPE_OPENGL},
-        {MPV_RENDER_PARAM_OPENGL_INIT_PARAM, &(mpv_opengl_init_params){gl_get_proc, NULL}},
+        {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &(mpv_opengl_init_params){gl_get_proc, NULL}},
         {MPV_RENDER_PARAM_INVALID, NULL},
     };
     if (mpv_render_context_create(&s->render_ctx, s->mpv, params) < 0) {

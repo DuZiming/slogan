@@ -1,9 +1,9 @@
 package com.slogan.tv.player.engine
 
 import android.content.Context
+import android.util.Log
 import android.view.Surface
-import dev.jdtech.mpv.MPVLib
-import dev.jdtech.mpv.MPVLib.MpvEvent
+import com.slogan.tv.player.core.MpvCore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -13,14 +13,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/** libmpv C API 事件 ID（与 mpv/client.h 一致） */
+object MpvEventId {
+    const val SHUTDOWN = 1
+    const val LOG_MESSAGE = 2
+    const val START_FILE = 6
+    const val END_FILE = 7
+    const val FILE_LOADED = 8
+    const val IDLE = 11
+}
+
 /**
- * libmpv 引擎实现。MPVLib 的调用集中在创建线程；mpv 事件回调统一跳到
- * Default 派发器再更新 StateFlow（StateFlow 线程安全，UI 侧主线程观察）。
+ * libmpv 引擎实现（LGPL 自建内核，经 MpvCore JNI 桥调用）。
+ * 渲染由 MpvCore 的 native 层 EGL 渲染桥处理（attachSurface 内建）。
  */
 class MpvEngine(context: Context) : PlayerEngine {
 
-    private val mpv: MPVLib = checkNotNull(MPVLib.create(context)) { "MPVLib.create 失败" }
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val mpv: MpvCore = checkNotNull(MpvCore.create(context)) { "MpvCore.create 失败" }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
 
     private val _state = MutableStateFlow<EngineState>(EngineState.Idle)
     override val state: StateFlow<EngineState> = _state.asStateFlow()
@@ -31,34 +41,17 @@ class MpvEngine(context: Context) : PlayerEngine {
     private var buffering = false
     private var surfaceAttached = false
 
-    private val logObserver = object : dev.jdtech.mpv.MPVLib.LogObserver {
-        override fun logMessage(prefix: String, level: Int, text: String) {
-            android.util.Log.d("MpvEngine", "log[$prefix/$level] $text")
-        }
-    }
-
-    private val observer = object : MPVLib.EventObserver {
-        override fun eventProperty(property: String) {
-            android.util.Log.d("MpvEngine", "event[$property]")
-        }
-
-        override fun eventProperty(property: String, value: Long) {
-            android.util.Log.d("MpvEngine", "event[$property] long=$value")
-        }
-
-        override fun eventProperty(property: String, value: Double) {
-            android.util.Log.d("MpvEngine", "event[$property] double=$value")
-            when (property) {
+    private val listener = object : MpvCore.EventListener {
+        override fun eventProperty(name: String, value: Double) {
+            when (name) {
                 "time-pos" -> update(positionMs = (value * 1000).toLong())
                 "duration" -> update(durationMs = (value * 1000).toLong())
             }
         }
 
-        override fun eventProperty(property: String, value: Boolean) {
-            android.util.Log.d("MpvEngine", "event[$property] bool=$value")
-            when (property) {
+        override fun eventProperty(name: String, value: Boolean) {
+            when (name) {
                 "pause" -> {
-                    // keep-open 场景播完会置 pause=true：结合 eof-reached 区分"播完"与"用户暂停"
                     val atEof = runCatching { mpv.getPropertyBoolean("eof-reached") }.getOrNull() == true
                     if (value && atEof) {
                         scope.launch { _state.value = EngineState.Ended }
@@ -71,36 +64,49 @@ class MpvEngine(context: Context) : PlayerEngine {
             }
         }
 
-        override fun eventProperty(property: String, value: String) {
-            android.util.Log.d("MpvEngine", "event[$property] str=$value")
-            // 实测 time-pos/duration 走 String 回调（native 桥按字符串投递）
-            when (property) {
+        override fun eventProperty(name: String, value: String) {
+            // time-pos/duration 可能以 String 回调（native 桥按字符串投递）
+            when (name) {
                 "time-pos" -> value.toDoubleOrNull()?.let { update(positionMs = (it * 1000).toLong()) }
                 "duration" -> value.toDoubleOrNull()?.let { update(durationMs = (it * 1000).toLong()) }
             }
         }
 
-        override fun event(eventId: Int) {
-            android.util.Log.d("MpvEngine", "mpvevent id=$eventId")
-            if (eventId == MpvEvent.MPV_EVENT_FILE_LOADED) {
-                // duration 的 observe 推送不可靠：装载完成时主动拉一次
-                val duration = runCatching { mpv.getPropertyDouble("duration") }.getOrNull()
-                duration?.let { if (it > 0) update(durationMs = (it * 1000).toLong()) }
+        override fun eventProperty(name: String, value: Long) {
+            Log.d("MpvEngine", "event[$name] long=$value")
+        }
+
+        override fun eventProperty(name: String) {
+            Log.d("MpvEngine", "event[$name] (no value)")
+        }
+
+        override fun mpvEvent(eventId: Int) {
+            Log.d("MpvEngine", "mpvevent id=$eventId")
+            when (eventId) {
+                MpvEventId.FILE_LOADED -> {
+                    val duration = runCatching { mpv.getPropertyDouble("duration") }.getOrNull()
+                    duration?.let { if (it > 0) update(durationMs = (it * 1000).toLong()) }
+                }
+                MpvEventId.END_FILE -> {
+                    // 文件结束（正常或错误）——检查是否是错误
+                    val idle = runCatching { mpv.getPropertyBoolean("idle-active") }.getOrNull()
+                    if (idle == true && _state.value is EngineState.Preparing) {
+                        scope.launch { _state.value = EngineState.Error("文件加载失败") }
+                    }
+                }
             }
+        }
+
+        override fun logMessage(prefix: String, level: Int, text: String) {
+            Log.d("MpvEngine", "log[$prefix/$level] $text")
         }
     }
 
     init {
-        // AAR 的 wrapper 不建 libmpv render context（vo=libmpv 只出黑屏）；
-        // 用 mpv 内建 android EGL 上下文直接渲染到 attachSurface 传入的窗口
-        mpv.setOptionString("vo", "gpu")
-        mpv.setOptionString("gpu-context", "android")
         mpv.setOptionString("hwdec", "auto")
-        // 播完停在末帧（不进 Idle），Ended 状态由 eof-reached 驱动
         mpv.setOptionString("keep-open", "always")
         mpv.init()
-        mpv.addLogObserver(logObserver)
-        mpv.addObserver(observer)
+        mpv.addEventListener(listener)
         mpv.observeProperty("time-pos", 1)
         mpv.observeProperty("duration", 2)
         mpv.observeProperty("pause", 3)
@@ -145,8 +151,8 @@ class MpvEngine(context: Context) : PlayerEngine {
     }
 
     override fun attach(surface: Surface) {
-        mpv.attachSurface(surface)
-        surfaceAttached = true
+        surfaceAttached = mpv.attachSurface(surface)
+        Log.d("MpvEngine", "attachSurface result=$surfaceAttached")
     }
 
     override fun detach() {
@@ -163,18 +169,13 @@ class MpvEngine(context: Context) : PlayerEngine {
             mpv.setOptionString("audio-spdif", "")
         }
         options.ao?.let { mpv.setOptionString("ao", it) }
-        // 未挂 Surface 时禁用视频输出，保证纯音频/无界面场景可走时钟
-        mpv.setPropertyString("vo", if (surfaceAttached) "gpu" else "null")
-        val startOption = options.startMs?.let { "start=+${it / 1000.0}" }
         _state.value = EngineState.Preparing
-        mpv.command(
-            if (startOption != null) {
-                arrayOf("loadfile", url, "replace", startOption)
-            } else {
-                arrayOf("loadfile", url, "replace")
-            },
-        )
-        // MPVLib 核心默认暂停态：load 即自动播放（引擎契约）
+        val startOption = options.startMs?.let { "start=+${it / 1000.0}" }
+        if (startOption != null) {
+            mpv.command("loadfile", url, "replace", startOption)
+        } else {
+            mpv.command("loadfile", url, "replace")
+        }
         mpv.setPropertyBoolean("pause", false)
     }
 
@@ -187,12 +188,12 @@ class MpvEngine(context: Context) : PlayerEngine {
     }
 
     override fun seekTo(positionMs: Long) {
-        mpv.command(arrayOf("seek", (positionMs / 1000.0).toString(), "absolute"))
+        mpv.command("seek", (positionMs / 1000.0).toString(), "absolute")
     }
 
     override fun stop() {
         resetProgress()
-        mpv.command(arrayOf("stop"))
+        mpv.command("stop")
         _state.value = EngineState.Idle
     }
 
@@ -208,7 +209,7 @@ class MpvEngine(context: Context) : PlayerEngine {
         buffering = false
     }
 
-    /** 按最新观测值重算状态（事件线程安全：全部经 scope 串行应用）。 */
+    /** 按最新观测值重算状态（limitedParallelism(1) 保证串行）。 */
     private fun update(
         positionMs: Long? = null,
         durationMs: Long? = null,
@@ -225,7 +226,6 @@ class MpvEngine(context: Context) : PlayerEngine {
                 this@MpvEngine.paused -> EngineState.Paused(this@MpvEngine.positionMs, this@MpvEngine.durationMs)
                 this@MpvEngine.buffering -> EngineState.Buffering(this@MpvEngine.positionMs)
                 this@MpvEngine.durationMs > 0 -> EngineState.Playing(this@MpvEngine.positionMs, this@MpvEngine.durationMs)
-                // duration 事件通常与首个 time-pos 同时到达；未就绪前停在 Preparing
                 else -> EngineState.Preparing
             }
         }

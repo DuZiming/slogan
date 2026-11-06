@@ -34,7 +34,7 @@ class MpvCore private constructor(context: Context) {
 
     fun detachSurface() = nativeDetachSurface(nativePtr)
 
-    fun command(vararg args: String): Int = nativeCommand(nativePtr, args)
+    fun command(vararg args: String): Int = nativeCommand(nativePtr, args as Array<String>)
 
     fun setOptionString(name: String, value: String): Int =
         nativeSetOptionString(nativePtr, name, value)

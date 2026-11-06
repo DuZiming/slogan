@@ -4,7 +4,7 @@ import android.content.Context
 import com.slogan.tv.library.model.MediaFile
 import com.slogan.tv.library.probe.ProbeClient
 import com.slogan.tv.library.probe.ProbeInfo
-import dev.jdtech.mpv.MPVLib
+import com.slogan.tv.player.core.MpvCore
 
 /**
  * libmpv 懒探测：独立 MPVLib 实例 loadfile(pause=yes, vo=null) → 轮询属性 → 释放。
@@ -17,14 +17,14 @@ class MpvProbeClient(
 
     override suspend fun probe(mediaFile: MediaFile): ProbeInfo {
         val empty = ProbeInfo(null, null, null, emptyList(), 0, null)
-        val mpv = runCatching { MPVLib.create(context) }.getOrNull() ?: return empty
+        val mpv = runCatching { MpvCore.create(context) }.getOrNull() ?: return empty
         try {
             mpv.setOptionString("vo", "null")
             mpv.setOptionString("ao", "null")
             mpv.setOptionString("pause", "yes")
             mpv.setOptionString("idle", "yes")
             mpv.init()
-            mpv.command(arrayOf("loadfile", mediaFile.path, "replace"))
+            mpv.command("loadfile", mediaFile.path, "replace")
 
             // 轮询 duration 直到非空或超时（文件装载完成的标志）
             val deadline = System.currentTimeMillis() + timeoutMs
