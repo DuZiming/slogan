@@ -235,6 +235,12 @@ Java_com_slogan_tv_player_core_MpvCore_nativeAttachSurface(
     s->egl_surface = eglCreateWindowSurface(s->egl_display, config, s->window, NULL);
     if (s->egl_surface == EGL_NO_SURFACE) goto fail;
 
+    /* mpv_render_context_create 的 get_proc_address 回调需要 EGL 上下文 current */
+    if (!eglMakeCurrent(s->egl_display, s->egl_surface, s->egl_surface, s->egl_context)) {
+        LOGE("eglMakeCurrent failed: 0x%x", eglGetError());
+        goto fail;
+    }
+
     /* 创建 mpv 渲染上下文（核心差异：自有构建暴露 mpv 句柄，这里直接用） */
     mpv_render_param params[] = {
         {MPV_RENDER_PARAM_API_TYPE, MPV_RENDER_API_TYPE_OPENGL},

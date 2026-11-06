@@ -5,7 +5,6 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
 import android.view.SurfaceHolder
-import android.view.SurfaceView
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -40,13 +39,15 @@ import java.util.concurrent.TimeUnit
  */
 class DebugPlayerActivity : ComponentActivity() {
 
-    private lateinit var engine: MpvEngine
+    private lateinit var engine: MpvEngine  // 后台线程延迟初始化，用 isInitialized 检查
     private lateinit var stateOverlay: TextView
     private var server: LoopbackStreamServer? = null
 
     @SuppressLint("SetTextI18n")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 强制窗口有背景 → 首帧可绘制 → splash screen 退出 → TextureView surface 可创建
+        window.setBackgroundDrawableResource(android.R.color.black)
 
         stateOverlay = TextView(this).apply {
             setTextColor(Color.GREEN)
@@ -54,7 +55,9 @@ class DebugPlayerActivity : ComponentActivity() {
             textSize = 14f
             setPadding(24, 24, 24, 24)
         }
-        val surface = SurfaceView(this)
+        val surfaceView = android.view.SurfaceView(this)
+        surfaceView.setZOrderMediaOverlay(true)
+        surfaceView.holder.setFormat(android.graphics.PixelFormat.OPAQUE)
         val overlayParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -64,31 +67,55 @@ class DebugPlayerActivity : ComponentActivity() {
             FrameLayout(this).apply {
                 setBackgroundColor(Color.BLACK)
                 addView(
-                    surface,
+                    surfaceView,
                     FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT,
                     ),
                 )
-                                addView(stateOverlay, overlayParams)
+                addView(stateOverlay, overlayParams)
             },
         )
 
-        engine = MpvEngine(this)
-        lifecycleScope.launch {
-            engine.state.collect { state ->
-                stateOverlay.text = "state: $state\n直通: ${intent.getStringExtra("spdif") ?: "auto"}"
+        // 延迟初始化：mpv 创建/初始化在后台线程，不阻塞主线程首帧绘制
+        lifecycleScope.launch(Dispatchers.IO) {
+            val eng = MpvEngine(this@DebugPlayerActivity)
+            withContext(Dispatchers.Main) {
+                engine = eng
+                stateOverlay.text = "engine ready"
+            }
+            launch {
+                eng.state.collect { state ->
+                    withContext(Dispatchers.Main) {
+                        stateOverlay.text = "state: $state\n直通: ${intent.getStringExtra("spdif") ?: "auto"}"
+                    }
+                }
             }
         }
 
-        surface.holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: SurfaceHolder) {
-                engine.attach(holder.surface)
-                lifecycleScope.launch { startPlayback() }
+        surfaceView.holder.addCallback(object : android.view.SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                android.util.Log.d("DebugPlayer", "surfaceCreated!")
+                lifecycleScope.launch(Dispatchers.IO) {
+                    var wait = 0
+                    while (::engine.isInitialized.not() && wait < 10000) {
+                        Thread.sleep(100)
+                        wait += 100
+                    }
+                    if (::engine.isInitialized) {
+                        val ok = engine.attach(holder.surface)
+                        withContext(Dispatchers.Main) {
+                            stateOverlay.append("\nattach=$ok")
+                        }
+                        startPlayback()
+                    }
+                }
             }
 
-            override fun surfaceChanged(holder: SurfaceHolder, f: Int, w: Int, h: Int) = Unit
-            override fun surfaceDestroyed(holder: SurfaceHolder) = engine.detach()
+            override fun surfaceChanged(holder: android.view.SurfaceHolder, f: Int, w: Int, h: Int) = Unit
+            override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                if (::engine.isInitialized) engine.detach()
+            }
         })
     }
 
